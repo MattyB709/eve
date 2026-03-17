@@ -3,10 +3,10 @@ use serialport::TTYPort;
 use std::io::{Write, Read};
 
 fn main() {
-    let port_build = serialport::new("/dev/ttyACM0", 115200).timeout(std::time::Duration::from_millis(5000));
+    let port_build = serialport::new("/dev/ttyACM0", 1000000).timeout(std::time::Duration::from_millis(5000));
     let mut tty_port = TTYPort::open(&port_build).expect("Failed to open port");
     println!("Port opened successfully!");
-    let bytes: [u8; 6] = [0xff, 0xff, 0x01, 0x02, 0x01, 0xfb];
+    let bytes: [u8; 8] = [0xff, 0xff, 0x01, 0x04, 0x02, 0x38, 0x02, 0xBE];
     let bytes = tty_port.write(&bytes).expect("Failed to write to port");
     tty_port.flush().expect("Failed to flush port");
     println!("Bytes written: {}", bytes);

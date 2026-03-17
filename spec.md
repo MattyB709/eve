@@ -4,3 +4,6 @@
 - [ ]: send positions/velocites to the servos for fwd kinematics
 - [ ]: inverse kinematics
 - [ ]: follow the leader 
+
+
+## servo drivers:

@@ -25,17 +25,4 @@ fn _teleop() {
     }
 }
 
-fn main() {
-    let mut servo = Sts3215::new("/dev/ttyACM0", 1_000_000, 5000).expect("fuh");
-    loop {
-        if let Ok(packet) = servo.read(4, Sts3215MemoryTableRegister::CurrentLocation)
-            && let Sts3215ResponsePacket::ReadResponse {
-                id: _,
-                working_condition,
-                data,
-            } = packet
-        {
-            println!("{working_condition} {data}");
-        }
-    }
-}
+fn main() {}

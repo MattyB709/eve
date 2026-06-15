@@ -34,8 +34,8 @@ fn main() {
                 working_condition,
                 data,
             } = packet
-            {
-                println!("{working_condition} {data}");
-            }
+        {
+            println!("{working_condition} {data}");
+        }
     }
 }

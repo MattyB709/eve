@@ -1,6 +1,6 @@
 use eve::sts3215::*;
 
-fn teleop() {
+fn _teleop() {
     let mut servo_follow = Sts3215::new("/dev/ttyACM0", 1_000_000, 5000).expect("fuh");
     let mut servo_teach = Sts3215::new("/dev/ttyACM1", 1_000_000, 5000).expect("fuh");
     loop {
@@ -9,13 +9,13 @@ fn teleop() {
 
             let current_pos = match packet_teach.expect("NO") {
                 Sts3215ResponsePacket::ReadResponse {
-                    id,
-                    working_condition,
+                    id: _,
+                    working_condition: _,
                     data,
                 } => data,
                 _ => panic!("not found"),
             };
-            let packet = servo_follow.write(
+            let _packet = servo_follow.write(
                 id,
                 Sts3215MemoryTableRegister::TargetLocation,
                 current_pos.to_le_bytes().to_vec(),
@@ -28,15 +28,14 @@ fn teleop() {
 fn main() {
     let mut servo = Sts3215::new("/dev/ttyACM0", 1_000_000, 5000).expect("fuh");
     loop {
-        if let Ok(packet) = servo.read(4, Sts3215MemoryTableRegister::CurrentLocation) {
-            if let Sts3215ResponsePacket::ReadResponse {
-                id,
+        if let Ok(packet) = servo.read(4, Sts3215MemoryTableRegister::CurrentLocation)
+            && let Sts3215ResponsePacket::ReadResponse {
+                id: _,
                 working_condition,
                 data,
             } = packet
             {
                 println!("{working_condition} {data}");
             }
-        }
     }
 }

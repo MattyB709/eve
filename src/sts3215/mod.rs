@@ -1,8 +1,32 @@
 use serialport::TTYPort;
+use std::result::Result;
 use std::io::{self, Read, Write};
+use bitflags::bitflags;
+
+// This file follows the protocol outlined here: https://roar-qutrc.github.io/systems/st3215-protocol.html
 
 pub struct Sts3215 {
     port: TTYPort,
+}
+
+#[derive(Debug)]
+pub enum ServoError {
+    Io(io::Error),
+    InvalidResponse,
+    ServoStatusError(StatusErrorFlags)
+}
+
+// these are the error flags that can be returned in the error byte of a response packet. This isn't documented super well in the English manual but the sdk
+// uses these bits
+bitflags! {
+    #[derive(Debug)]
+    pub struct StatusErrorFlags: u8 {
+        const VOLTAGE_ERROR = 0b00000001;
+        const ANGLE_LIMIT_ERROR = 0b00000010; 
+        const OVERHEATING_ERROR = 0b00000100;
+        const OVERELECTRIC_ERROR = 0b00001000;
+        const OVERLOAD_ERROR = 0b00010000;
+    }
 }
 
 pub enum Sts3215MemoryTableRegister {
@@ -61,21 +85,49 @@ impl Sts3215 {
         Ok(Sts3215 { port })
     }
 
-    fn serial_send_and_recv(&mut self, buffer: Vec<u8>) -> io::Result<[u8; 64]> {
+    // this function should be able to send any command to the servo and return the raw response buffer, plus handle error checking and checksum verification
+    fn serial_send_and_recv(&mut self, buffer: Vec<u8>) -> Result<Vec<u8>, ServoError> {
         let mut formatted_buffer = vec![0xff, 0xff];
         let check_sum: u8 = !(buffer.iter().fold(0, |acc, x| acc.wrapping_add(*x)));
         formatted_buffer.extend(buffer);
         formatted_buffer.push(check_sum);
-        self.port.write(&mut formatted_buffer.as_slice())?;
+        self.port.write_all(formatted_buffer.as_slice()).map_err(ServoError::Io)?;
 
-        let mut recv_buffer: [u8; 64] = [0; 64];
+        let mut recv_buffer = vec![0; 4];
 
-        self.port.read(&mut recv_buffer)?;
+        self.port.read_exact(&mut recv_buffer).map_err(ServoError::Io)?;
+
+        // check header
+        if recv_buffer[0] != 0xff || recv_buffer[1] != 0xff {
+            return Err(ServoError::InvalidResponse);
+        }
+
+        let id = recv_buffer[2];
+        let length = recv_buffer[3];
+        let mut buffer_rest = vec![0; length as usize];
+        self.port.read_exact(&mut buffer_rest).map_err(ServoError::Io)?;
+
+        let error = buffer_rest[0];
+
+        if error != 0 {
+            let servo_status_error = StatusErrorFlags::from_bits(error).unwrap_or_else(|| panic!("Invalid error byte received from servo: {error}"));
+            return Err(ServoError::ServoStatusError(servo_status_error));
+        }
+
+        // checksum is calculated using id, length, instruction, and parameters, with a negation
+        let mut calculated_check_sum = buffer_rest[..buffer_rest.len() - 1].iter().fold(0u8, |acc, x| acc.wrapping_add(*x));
+        calculated_check_sum = !calculated_check_sum.wrapping_add(id).wrapping_add(length);
+        if calculated_check_sum != buffer_rest[buffer_rest.len() - 1] {
+            return Err(ServoError::InvalidResponse);
+        }
+
+        recv_buffer.extend(buffer_rest);
         Ok(recv_buffer)
     }
 
-    pub fn ping(&mut self, id: u8) -> io::Result<Sts3215ResponsePacket> {
+    pub fn ping(&mut self, id: u8) -> Result<Sts3215ResponsePacket, ServoError> {
         let buffer = self.serial_send_and_recv(vec![id, 0x02, 0x01])?;
+
 
         Ok(Sts3215ResponsePacket::PingResponse {
             id: buffer[2],
@@ -88,8 +140,8 @@ impl Sts3215 {
         &mut self,
         id: u8,
         register: Sts3215MemoryTableRegister,
-    ) -> io::Result<Sts3215ResponsePacket> {
-        let buffer: [u8; 64] =
+    ) -> Result<Sts3215ResponsePacket, ServoError> {
+        let buffer  =
             self.serial_send_and_recv(vec![id, 0x4, 0x2, register.address(), register.size()])?;
 
         assert_eq!(buffer[3], register.size() + 2); // checking that effective data length is correct
@@ -111,7 +163,7 @@ impl Sts3215 {
         id: u8,
         register: Sts3215MemoryTableRegister,
         data: Vec<u8>,
-    ) -> io::Result<Sts3215ResponsePacket> {
+    ) -> Result<Sts3215ResponsePacket, ServoError> {
         let mut bytes = vec![id, data.len() as u8 + 3, 0x3, register.address()];
         for byte in data {
             bytes.push(byte);

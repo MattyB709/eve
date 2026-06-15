@@ -1,9 +1,9 @@
 pub mod sts3215;
-use sts3215::*;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sts3215::Sts3215MemoryTableRegister;
 
     #[test]
     fn read_test() {
